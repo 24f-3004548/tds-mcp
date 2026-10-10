@@ -8,7 +8,7 @@ router = APIRouter()
 IST = timezone(timedelta(hours=5, minutes=30))
 BASE = os.environ.get("LEDGER_BASE", "")
 KEY = os.environ.get("GEMINI_API_KEY", "")
-MODELS = [os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"), "gemini-2.0-flash"]
+MODELS = [m for m in [os.environ.get("GEMINI_MODEL"), "gemini-3.8-flash", "gemini-flash-latest"] if m]
 
 _lock = threading.Lock()
 DATA = {"rows": None, "rates": None, "meta": None, "t": 0}
@@ -78,10 +78,15 @@ def ask_llm(q):
     for m in MODELS:
         try:
             r = httpx.post(f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent",
-                           params={"key": KEY}, json=body, timeout=9)
-            t = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-            s = json.loads(t)
-            return s[0] if isinstance(s, list) else s
+                           params={"key": KEY}, json=body, timeout=10)
+            j = r.json()
+            if "candidates" not in j:
+                print("GEMINI", m, str(j)[:300])
+                raise RuntimeError(str(j)[:200])
+            parts = j["candidates"][0]["content"]["parts"]
+            t = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+            sp = json.loads(t)
+            return sp[0] if isinstance(sp, list) else sp
         except Exception as e:
             err = e
     raise err
