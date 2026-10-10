@@ -72,23 +72,26 @@ Question: {q}"""
 
 def ask_llm(q):
     prompt = SYSTEM.format(meta=json.dumps(DATA["meta"]), q=q)
-    body = {"contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}}
     err = None
     for m in MODELS:
-        try:
-            r = httpx.post(f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent",
-                           params={"key": KEY}, json=body, timeout=10)
-            j = r.json()
-            if "candidates" not in j:
-                print("GEMINI", m, str(j)[:300])
-                raise RuntimeError(str(j)[:200])
-            parts = j["candidates"][0]["content"]["parts"]
-            t = "".join(p.get("text", "") for p in parts if not p.get("thought"))
-            sp = json.loads(t)
-            return sp[0] if isinstance(sp, list) else sp
-        except Exception as e:
-            err = e
+        for think in ({"thinkingBudget": 0}, {"thinkingLevel": "low"}, None):
+            gc = {"temperature": 0, "responseMimeType": "application/json"}
+            if think: gc["thinkingConfig"] = think
+            body = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": gc}
+            try:
+                r = httpx.post(f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent",
+                               params={"key": KEY}, json=body, timeout=9)
+                j = r.json()
+                if "candidates" not in j:
+                    print("GEMINI", m, think, str(j)[:300]); err = RuntimeError(str(j)[:200]); continue
+                parts = j["candidates"][0]["content"]["parts"]
+                t = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+                sp = json.loads(t)
+                return sp[0] if isinstance(sp, list) else sp
+            except httpx.TimeoutException as e:
+                err = e; break
+            except Exception as e:
+                err = e
     raise err
 
 def eq(a, b): return str(a).strip().casefold() == str(b).strip().casefold()
