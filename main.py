@@ -58,3 +58,6 @@ async def mcp_get():
 @app.get("/")
 async def root():
     return {"ok": True}
+
+from ledger import router
+app.include_router(router)
